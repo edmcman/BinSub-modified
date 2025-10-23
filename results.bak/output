@@ -1,0 +1,13 @@
+Number of comparable targets:  1568
+0.8041135195805225
+1568
+1568
+[('armel_xz.bin', 74544, 38398213947.0)]
+0.8029608976155257
+1568
+1568
+[('armel_xz.bin', 74544, 232690643.25)]
+Tgt1 average diff:  1.6831431586323966
+Tgt2 average diff:  1.6729650078609744
+Tgt1 average time:  1514147895.0876913
+Tgt2 average time:  24084671.4765625

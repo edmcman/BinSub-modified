@@ -1,0 +1,234 @@
+#!/usr/bin/env python3
+# pylint:disable=missing-class-docstring,no-self-use
+import networkx as nx
+from angr.angrdb import AngrDB
+from angr.analyses.typehoon.algebraic_solver import ConstraintGenerator, Atom, TypeAutomata, RecordLabel, AutState, PointerCons
+from angr.analyses.typehoon import algebraic_solver
+from angr.analyses.typehoon.typevars import TypeConstraint, Subtype, Load, HasField, TypeVariable, DerivedTypeVariable, FuncIn
+__package__ = __package__ or "tests.analyses"  # pylint:disable=redefined-builtin
+
+import os
+import unittest
+
+
+from pyrsistent import pmap
+import angr
+from angr.analyses.typehoon.typevars import (
+    TypeVariable,
+    DerivedTypeVariable,
+    Subtype,
+    FuncIn,
+    FuncOut,
+    Load,
+    HasField,
+)
+from angr.analyses.typehoon.typeconsts import Int32, Struct, Pointer64
+
+from ..common import bin_location
+
+
+test_location = os.path.join(bin_location, "tests")
+
+
+class TestTypehoon(unittest.TestCase):
+
+    def test_rec_type_solver(self):
+        tv_func = TypeVariable()
+
+        tv1 = TypeVariable()
+        tv2 = TypeVariable()
+        tv3 = TypeVariable()
+
+        load_at_40 = DerivedTypeVariable(
+            DerivedTypeVariable(tv1, Load()), HasField(64, 40))
+
+        s1 = Subtype(load_at_40, tv2)
+        s2 = Subtype(tv2, tv3)
+        s3 = Subtype(tv3, tv1)
+        s4 = Subtype(DerivedTypeVariable(tv_func, FuncIn(0)), tv1)
+
+        solved = ConstraintGenerator({tv_func: set([s1, s2, s3, s4])})
+        print("tys: ")
+        print(solved.base_var_map)
+        print(solved.solved_types)
+        for ty in solved.solved_types.values():
+            opt = Optimizer()
+            print(opt.optimize_ty(ty))
+        assert False
+
+    def test_mooosl_typehoon(self):
+        db = AngrDB()
+        proj: angr.Project = db.load(os.path.join(
+            test_location, "x86_64", "mooosl.adb"))
+        vr = proj.analyses.VariableRecoveryFast(proj.kb.functions["lookup"])
+        proj.analyses.CompleteCallingConventions(proj.kb.functions["lookup"])
+        # print(vr.type_constraints)
+
+        # res = proj.analyses.Typehoon(vr.type_constraints, vr.func_typevar,
+        #                             var_mapping=vr.var_to_typevars)
+
+        # for s in [v for (k, v) in vr.var_to_typevars.items() if k.name == "s_10"]:
+        #    for tv in s:
+        #        print(res.solution[tv])
+
+        res2 = proj.analyses.Clinic(
+            proj.kb.functions["lookup"], solver_builder=lambda bits, constraints, variables: ConstraintGenerator(constraints, bits))
+        assert (False)
+
+    def test_mooosl(self):
+        db = AngrDB()
+        proj: angr.Project = db.load(os.path.join(
+            test_location, "x86_64", "mooosl.adb"))
+        vr = proj.analyses.VariableRecoveryFast(proj.kb.functions["lookup"])
+        proj.analyses.CompleteCallingConventions(proj.kb.functions["lookup"])
+        print(vr.type_constraints)
+
+        for k in vr.type_constraints.keys():
+            print(type(k))
+
+        print(vr.var_to_typevars)
+
+        solved = ConstraintGenerator(vr.type_constraints, 64)
+        print(solved.solution)
+
+        for s in [v for (k, v) in vr.var_to_typevars.items() if k.name == "s_10"]:
+            for tv in s:
+                print("Have target tv:", tv)
+                print(solved.base_var_map)
+                if tv in solved.base_var_map:
+                    print(solved.base_var_map[tv])
+                    ty = solved.coalesce_acc(
+                        solved.base_var_map[tv], pmap(), False)
+                    print("Coalesced:", ty)
+                    # opt = Optimizer()
+                    # print(solved.solved_types[tv])
+                    # optimized = opt.optimize_ty(ty, False)
+                    # print("Optimized: ", optimized)
+                    # print("Evaled: ", algebraic_solver.evaluate_type(
+                    #    optimized))
+
+                    ty_aut = TypeAutomata()
+                    ty_aut.build_ty_go(ty, False)
+                    print("entry: ", ty_aut.entry)
+                    ty_aut.write("/tmp/nfa")
+
+                    det_aut = ty_aut.detereminise()
+                    print("dfa entry ", det_aut.entry)
+                    det_aut.write("/tmp/deterministic")
+
+                    st: AutState = det_aut.G.nodes[det_aut.entry][TypeAutomata.STATE_NAME]
+                    assert PointerCons().ident in st.head_constructors.map_domain
+                    # s = set(
+                    #     [nm for (_, _, nm) in det_aut.G.edges.data(TypeAutomata.SYMB_NAME)])
+                    # assert RecordLabel(16) in s
+                    # assert RecordLabel(32) in s
+                    # assert RecordLabel(40) in s
+                    # min_aut = det_aut.minimise()
+                    # s = set(
+                    #     [nm for (_, _, nm) in min_aut.G.edges.data(TypeAutomata.SYMB_NAME)])
+                    # assert RecordLabel(16) in s
+                    # assert RecordLabel(32) in s
+                    # assert RecordLabel(40) in s
+                    # min_aut.write("/tmp/dot")
+                    print(solved.determine_type(ty))
+        assert False
+
+    def test_smoketest(self):
+        p = angr.Project(os.path.join(test_location, "x86_64",
+                         "linked_list"), auto_load_libs=False)
+        cfg = p.analyses.CFG(data_references=True, normalize=True)
+
+        main_func = cfg.kb.functions["sum"]
+
+        vr = p.analyses.VariableRecoveryFast(main_func)
+        p.analyses.CompleteCallingConventions()
+
+        # import pprint
+        tcons = vr.type_constraints
+        # pprint.pprint(vr._outstates[0x4005b2].typevars._typevars)
+        # pprint.pprint(tcons)
+
+        _ = p.analyses.Typehoon(tcons, vr.func_typevar,
+                                var_mapping=vr.var_to_typevars)
+        # pprint.pprint(t.simtypes_solution)
+
+        # convert function blocks to AIL blocks
+        # clinic = p.analyses.Clinic(main_func)
+
+        # t = p.analyses.Typehoon(main_func) #, clinic)
+        # print(t)
+
+    def test_type_inference_byte_pointer_cast(self):
+        proj = angr.Project(os.path.join(
+            test_location, "i386", "type_inference_1"), auto_load_libs=False)
+        cfg = proj.analyses.CFG(data_references=True, normalize=True)
+        main_func = cfg.kb.functions["main"]
+        proj.analyses.VariableRecoveryFast(main_func)
+        proj.analyses.CompleteCallingConventions()
+
+        dec = proj.analyses.Decompiler(main_func)
+        assert "->field_0 = 10;" in dec.codegen.text
+        assert "->field_4 = 20;" in dec.codegen.text
+        assert "->field_8 = 808464432;" in dec.codegen.text
+        assert "->field_c = 0;" in dec.codegen.text
+
+    def test_function_call_argument_type_propagation(self):
+        # ensure that UNICODE_STRING is propagated to stack variables from calls to RtlInitUnicodeString
+        proj = angr.Project(os.path.join(
+            test_location, "x86_64", "windows", "sioctl.sys"), auto_load_libs=False)
+        cfg = proj.analyses.CFG(normalize=True)
+        main_func = cfg.kb.functions[0x140006000]
+        proj.analyses.VariableRecoveryFast(main_func)
+        proj.analyses.CompleteCallingConventions()
+
+        dec = proj.analyses.Decompiler(main_func, cfg=cfg.model)
+        assert dec.codegen.text.count("UNICODE_STRING v") == 2
+
+    def test_type_inference_basic_case_0(self):
+        func_f = TypeVariable(name="F")
+        v0 = TypeVariable(name="v0")
+        type_constraints = {func_f: {Subtype(v0, Int32())}}
+        proj = angr.load_shellcode(b"\x90\x90", "AMD64")
+        typehoon = proj.analyses.Typehoon(
+            type_constraints,
+            func_f,
+        )
+
+        assert isinstance(typehoon.solution[v0], Int32)
+
+    def test_type_inference_basic_case_1(self):
+        func_f = TypeVariable(name="F")
+        func_close = TypeVariable(name="close")
+        t0 = TypeVariable(name="t0")
+        t1 = TypeVariable(name="t1")
+        t2 = TypeVariable(name="t2")
+        type_constraints = {
+            func_f: {
+                Subtype(DerivedTypeVariable(func_f, FuncIn(0)), t2),
+                Subtype(t1, t0),
+                Subtype(t2, t0),
+                Subtype(DerivedTypeVariable(
+                    t0, None, labels=[Load(), HasField(32, 0)]), t1),
+                Subtype(DerivedTypeVariable(t0, None, labels=[
+                        Load(), HasField(32, 4)]), Int32()),
+                Subtype(Int32(), DerivedTypeVariable(func_f, FuncOut(0))),
+            },
+            func_close: set(),
+        }
+        proj = angr.load_shellcode(b"\x90\x90", "AMD64")
+        typehoon = proj.analyses.Typehoon(type_constraints, func_f)
+
+        # print(typehoon.simtypes_solution)
+        # print(typehoon.structs)
+        t0_solution = typehoon.solution[t0]
+        assert isinstance(t0_solution, Pointer64)
+        assert isinstance(t0_solution.basetype, Struct)
+        assert 0 in t0_solution.basetype.fields
+        assert 4 in t0_solution.basetype.fields
+        assert isinstance(t0_solution.basetype.fields[0], Pointer64)
+        assert t0_solution.basetype.fields[0].basetype is t0_solution.basetype
+        assert isinstance(t0_solution.basetype.fields[4], Int32)
+
+
+if __name__ == "__main__":
+    unittest.main()
