@@ -237,7 +237,7 @@ class SimTypeBottom(SimType):
 
     def c_repr(self, name=None, full=0, memo=None, indent=0):
         if name is None:
-            return "int"
+            return "int" if self.label is None else self.label
         else:
             return f'{"int" if self.label is None else self.label} {name}'
 

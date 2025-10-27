@@ -1,6 +1,10 @@
 FROM ubuntu:jammy
-RUN --mount=type=cache,target=/var/cache/apt --mount=type=cache,target=/var/lib/apt/lists apt-get update
-RUN --mount=type=cache,target=/var/cache/apt --mount=type=cache,target=/var/lib/apt/lists apt-get install -y git build-essential
+RUN --mount=target=/var/lib/apt,type=cache,sharing=locked \
+    --mount=target=/var/cache/apt,type=cache,sharing=locked \
+    apt-get update
+RUN --mount=target=/var/lib/apt,type=cache,sharing=locked \
+    --mount=target=/var/cache/apt,type=cache,sharing=locked \
+    apt-get install -y git build-essential
 
 
 RUN git clone -b binsub-thing --recursive https://github.com/edmcman/angr-dev.git /angr-dev
@@ -32,16 +36,19 @@ RUN cd archr && git reset --hard c4ae82f7bd77d768cf9b210602b2e2a54dc6aff1
 COPY ./angr-type-inference /angr-dev/angr
 COPY ./cle /angr-dev/cle
 
-RUN --mount=type=cache,target=/var/cache/apt --mount=type=cache,target=/var/lib/apt/lists apt-get install -y python3-pip
+RUN --mount=target=/var/lib/apt,type=cache,sharing=locked \
+    --mount=target=/var/cache/apt,type=cache,sharing=locked \
+    apt-get install -y python3-pip
 RUN --mount=type=cache,target=/root/.cache/pip pip3 install virtualenv
-RUN --mount=type=cache,target=/root/.cache/pip ./setup.sh -i -e angr
+RUN --mount=target=/var/lib/apt,type=cache,sharing=locked \
+    --mount=target=/var/cache/apt,type=cache,sharing=locked \
+    --mount=type=cache,target=/root/.cache/pip ./setup.sh -i -e angr
 
 ENV PATH="/root/.virtualenvs/angr/bin/:$PATH"
 
-RUN --mount=type=cache,target=/root/.cache/pip pip install pyrsistent hjson
+RUN --mount=type=cache,target=/root/.cache/pip pip install pyrsistent hjson matplotlib
 RUN mkdir /wdir
 WORKDIR /wdir
-RUN --mount=type=cache,target=/root/.cache/pip pip install matplotlib
 
 ENTRYPOINT ["python"]
 

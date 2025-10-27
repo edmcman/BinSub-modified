@@ -544,17 +544,41 @@ def main():
                     comparer = TypeComparison(bl)
                     translator = TypeTranslator(comp.arch)
 
-                    c_type = translator.simtype2tc(comp.recoverd_fty)
+                    sim_type = comp.recoverd_fty
+                    c_type = sim_type.c_repr()
+                    tc_type = translator.simtype2tc(comp.recoverd_fty)
                     print(f"***********************************\n\n")
                     print(f"Raw recovered fty", comp.recoverd_fty, f"type={type(comp.recoverd_fty)}")
                     print(f"Raw ground truth type", comp.ground_truth_type, f"type={type(comp.ground_truth_type)}")
-                    print(f"Recovered: {c_type}: type = {(type(c_type))}")
+                    print(f"Recovered: {tc_type}: type = {(type(tc_type))}")
+                    print(f"Recovered C: {c_type}: type = {(type(c_type))}")
                     print(f"Function name: {comp.func.name}")
                     print(f"\n\n***********************************")
-                    dist = comparer.type_distance(c_type, comp.ground_truth_type, CompState(pset(), pset()))
-                    hjson.dump(asdict(ComparisonData(
-                        bin_name, comp.func.addr, comp.func_size, dist, comp.ns_time_spent_during_inference)), totfl)
-                    totfl.write('\n')
+                    dist = comparer.type_distance(tc_type, comp.ground_truth_type, CompState(pset(), pset()))
+                    d = asdict(ComparisonData(
+                        bin_name, comp.func.addr, comp.func_size, dist, comp.ns_time_spent_during_inference))
+                    d['funcname'] = comp.func.name
+                    d['ctype'] = c_type
+                    d['tctype'] = str(tc_type)
+                    d['simtype'] = str(sim_type)
+                    d['gttype'] = str(comp.ground_truth_type)
+
+                    d['tc_predicted'] = {
+                        'params': [str(p) for p in tc_type.params],
+                        'outputs': [str(o) for o in tc_type.outputs]
+                    }
+
+                    ret_t = ("void", "void") if sim_type.returnty is None else (str(sim_type.returnty), sim_type.returnty.c_repr())
+                    d['simtype_predicted_c'] = {
+                        'args': [(str(arg), arg.c_repr()) for arg in sim_type.args],
+                        'returnty': ret_t
+                    }
+
+                    try:
+                        hjson.dump(d, totfl)
+                        totfl.flush()
+                    except Exception as e:
+                        print(f"Error writing to file: {e}")
                 if isinstance(name_and_comp, str):
                     log.write(name_and_comp)
 
