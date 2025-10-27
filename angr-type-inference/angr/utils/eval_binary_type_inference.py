@@ -543,8 +543,14 @@ def main():
                     comparer = TypeComparison(bl)
                     translator = TypeTranslator(comp.arch)
 
-                    dist = comparer.type_distance(
-                        translator.simtype2tc(comp.recoverd_fty), comp.ground_truth_type, CompState(pset(), pset()))
+                    c_type = translator.simtype2tc(comp.recoverd_fty)
+                    print(f"***********************************\n\n")
+                    print(f"Raw recovered fty", comp.recoverd_fty, f"type={type(comp.recoverd_fty)}")
+                    print(f"Raw ground truth type", comp.ground_truth_type, f"type={type(comp.ground_truth_type)}")
+                    print(f"Recovered: {c_type}: type = {(type(c_type))}")
+                    print(f"Function name: {comp.func.name}")
+                    print(f"\n\n***********************************")
+                    dist = comparer.type_distance(c_type, comp.ground_truth_type, CompState(pset(), pset()))
                     pickle.dump(ComparisonData(
                         bin_name, comp.func.addr, comp.func_size, dist, comp.ns_time_spent_during_inference), totfl)
                 if isinstance(name_and_comp, str):
