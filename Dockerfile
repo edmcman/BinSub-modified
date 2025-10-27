@@ -1,13 +1,11 @@
 FROM ubuntu:jammy
-
 RUN apt-get update
 RUN apt-get install -y git build-essential
 
 
-RUN git clone --recursive https://github.com/angr/angr-dev.git /angr-dev
+RUN git clone -b binsub-thing --recursive https://github.com/edmcman/angr-dev.git /angr-dev
 
 WORKDIR /angr-dev
-RUN git reset --hard bf84edd9853cac80937c1d68156b4a960b21685b
 
 # pin repos
 RUN git clone --recursive https://github.com/angr/archinfo.git
