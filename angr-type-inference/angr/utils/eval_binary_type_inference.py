@@ -26,7 +26,6 @@ import typing
 import itertools
 from archinfo import Arch
 from sortedcontainers import SortedDict
-import pickle
 from pyrsistent import pset, PSet
 from abc import ABC, abstractmethod
 from multiprocessing.connection import Connection
@@ -34,6 +33,8 @@ from concurrent.futures import ProcessPoolExecutor
 from concurrent import futures
 import io
 from multiprocessing import Pool, Queue, Manager
+import hjson
+from dataclasses import asdict
 
 T = typing.TypeVar("T")
 
@@ -551,15 +552,16 @@ def main():
                     print(f"Function name: {comp.func.name}")
                     print(f"\n\n***********************************")
                     dist = comparer.type_distance(c_type, comp.ground_truth_type, CompState(pset(), pset()))
-                    pickle.dump(ComparisonData(
-                        bin_name, comp.func.addr, comp.func_size, dist, comp.ns_time_spent_during_inference), totfl)
+                    hjson.dump(asdict(ComparisonData(
+                        bin_name, comp.func.addr, comp.func_size, dist, comp.ns_time_spent_during_inference)), totfl)
+                    totfl.write('\n')
                 if isinstance(name_and_comp, str):
                     log.write(name_and_comp)
 
             isdone = False
 
             def rec_items():
-                totfl = open(args.out, "ab+")
+                totfl = open(args.out, "a")
                 nonlocal isdone
                 while not isdone:
                     try:
