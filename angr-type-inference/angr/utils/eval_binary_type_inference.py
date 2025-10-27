@@ -33,7 +33,7 @@ from concurrent.futures import ProcessPoolExecutor
 from concurrent import futures
 import io
 from multiprocessing import Pool, Queue, Manager
-import hjson
+import json
 from dataclasses import asdict
 
 T = typing.TypeVar("T")
@@ -575,7 +575,8 @@ def main():
                     }
 
                     try:
-                        hjson.dump(d, totfl)
+                        json.dump(d, totfl)
+                        totfl.write('\n')
                         totfl.flush()
                     except Exception as e:
                         print(f"Error writing to file: {e}")

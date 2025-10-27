@@ -46,7 +46,7 @@ RUN --mount=target=/var/lib/apt,type=cache,sharing=locked \
 
 ENV PATH="/root/.virtualenvs/angr/bin/:$PATH"
 
-RUN --mount=type=cache,target=/root/.cache/pip pip install pyrsistent hjson matplotlib
+RUN --mount=type=cache,target=/root/.cache/pip pip install pyrsistent matplotlib
 RUN mkdir /wdir
 WORKDIR /wdir
 
