@@ -528,7 +528,10 @@ class Evaler:
         
         # Get the base address where the binary is loaded
         base_addr = proj.loader.main_object.mapped_base
-        print(f"Binary loaded at base address: {hex(base_addr)}")
+        # For PIE binaries, we need to adjust DWARF addresses by the base address
+        # For non-PIE binaries, DWARF addresses should already match
+        is_pie = proj.loader.main_object.pic
+        print(f"Binary loaded at base address: {hex(base_addr)}, PIE: {is_pie}")
         
         proj.analyses.CFGFast(normalize=True, data_references=True)
         proj.analyses.CompleteCallingConventions(
@@ -546,8 +549,8 @@ class Evaler:
                 retty = None
                 if f.type_offset is not None and f.type_offset in proj.loader.main_object.type_list:
                     retty = proj.loader.main_object.type_list[f.type_offset]
-                # Adjust DWARF address by adding the base address
-                adjusted_addr = low_pc + base_addr
+                # Only adjust DWARF address for PIE binaries
+                adjusted_addr = low_pc + base_addr if is_pie else low_pc
                 sigs[adjusted_addr] = SimTypeFunction(dwarf_sig_args, retty)
 
         print(f"Found {len(sigs)} function signatures from DWARF")
