@@ -507,6 +507,7 @@ class Evaler:
                 func, solver_builder=bldr, variable_kb=tmp_kb)
             # func, solver_builder=SimpleSolver)
         except Exception as e:
+            print(f"Exception in collect_variable_types_for_function for {func.name} at {func.addr:#x}: {type(e).__name__}: {e}")
             return None
         # print(cres.ns_time_spent_in_type_inference)
         if cres.ns_time_spent_in_type_inference == 0:
@@ -524,6 +525,11 @@ class Evaler:
             proj = angr.Project(path, auto_load_libs=False,
                                 load_debug_info=True, main_opts={"base_addr": 0})
         print(proj.loader.main_object)
+        
+        # Get the base address where the binary is loaded
+        base_addr = proj.loader.main_object.mapped_base
+        print(f"Binary loaded at base address: {hex(base_addr)}")
+        
         proj.analyses.CFGFast(normalize=True, data_references=True)
         proj.analyses.CompleteCallingConventions(
             recover_variables=True, analyze_callsites=True)
@@ -540,11 +546,22 @@ class Evaler:
                 retty = None
                 if f.type_offset is not None and f.type_offset in proj.loader.main_object.type_list:
                     retty = proj.loader.main_object.type_list[f.type_offset]
-                sigs[low_pc] = SimTypeFunction(dwarf_sig_args, retty)
+                # Adjust DWARF address by adding the base address
+                adjusted_addr = low_pc + base_addr
+                sigs[adjusted_addr] = SimTypeFunction(dwarf_sig_args, retty)
 
+        print(f"Found {len(sigs)} function signatures from DWARF")
+        if len(sigs) > 0:
+            print(f"Sample DWARF addresses: {list(sigs.keys())[:5]}")
+        print(f"Found {len(proj.kb.functions)} functions in binary")
+        if len(proj.kb.functions) > 0:
+            print(f"Sample angr function addresses: {[hex(addr) for addr in list(proj.kb.functions.keys())[:5]]}")
+        
         failed_funcs = []
+        matched_funcs = 0
         for (_, func) in proj.kb.functions.items():
             if func.addr in sigs:
+                matched_funcs += 1
                 old_proto = func.prototype
                 was_guessed = func.is_prototype_guessed
                 vtype = None
@@ -565,8 +582,9 @@ class Evaler:
                         if old_proto is not None:
                             func.prototype = old_proto
                             func.is_prototype_guessed = was_guessed
-                except:
-                    pass
+                except Exception as e:
+                    print(f"Exception in microbenchmark loop for {func.name} at {func.addr:#x}: {type(e).__name__}: {e}")
+                    is_invalid = True
                 if vtype is not None and not is_invalid:
                     print(f"trying to send {vtype.func.addr:x}")
                     if vtype.func.addr in sigs:
@@ -576,6 +594,7 @@ class Evaler:
                 else:
                     self.q.put(f"{binname}: Failed func {func.addr}\n")
 
+        print(f"Matched {matched_funcs} functions with DWARF signatures")
         return True
 
     def eval_bin_withtimeout(self, target_dir):
@@ -680,23 +699,36 @@ def main():
                     except Exception as e:
                         print(f"Error writing to file: {e}")
                 if isinstance(name_and_comp, str):
-                    log.write(name_and_comp)
+                    log.write(name_and_comp.encode())
 
             isdone = False
 
             def rec_items():
+                from queue import Empty
                 totfl = open(args.out, "a")
                 nonlocal isdone
                 while not isdone:
                     try:
                         recv_item(q.get(timeout=1), totfl)
-                    except:
+                    except Empty:
+                        # Queue is empty, this is expected - just continue waiting
                         pass
+                    except Exception as e:
+                        import traceback
+                        print(f"Exception in rec_items: {type(e).__name__}: {e}")
+                        traceback.print_exc()
                 totfl.close()
             thrd = Thread(target=rec_items)
             thrd.start()
             for x in tqdm.tqdm(futures.as_completed(futs),  total=max_len):
-                print(x.exception())
+                exc = x.exception()
+                if exc is not None:
+                    import traceback
+                    error_msg = f"Worker exception: {type(exc).__name__}: {exc}\n"
+                    error_msg += ''.join(traceback.format_exception(type(exc), exc, exc.__traceback__))
+                    print(error_msg)
+                    log.write(error_msg.encode())
+                    log.flush()
 
             isdone = True
             log.close()
