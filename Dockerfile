@@ -1,11 +1,11 @@
 FROM ubuntu:jammy
-RUN --mount=target=/var/lib/apt,type=cache,sharing=locked \
-    --mount=target=/var/cache/apt,type=cache,sharing=locked \
-    apt-get update
-RUN --mount=target=/var/lib/apt,type=cache,sharing=locked \
-    --mount=target=/var/cache/apt,type=cache,sharing=locked \
-    apt-get install -y git build-essential
 
+# Remove the automatic cleanup hook
+RUN rm -f /etc/apt/apt.conf.d/docker-clean
+
+RUN --mount=target=/var/lib/apt,type=cache,sharing=locked \
+    --mount=target=/var/cache/apt,type=cache,sharing=locked \
+    apt-get update && apt-get install -y git build-essential
 
 RUN git clone -b binsub-thing --recursive https://github.com/edmcman/angr-dev.git /angr-dev
 
