@@ -638,7 +638,7 @@ def main():
         q = m.Queue()
 
         evaler = Evaler(args.algebraic_solver, q, args.microbenchmarks)
-        log: io.BufferedRandom = args.failure_log
+        log = args.failure_log
         with ProcessPoolExecutor(max_workers=args.num_proc) as p:
             futs = []
 
@@ -702,7 +702,7 @@ def main():
                     except Exception as e:
                         print(f"Error writing to file: {e}")
                 if isinstance(name_and_comp, str):
-                    log.write(name_and_comp.encode())
+                    log.write(name_and_comp)
 
             isdone = False
 
@@ -730,7 +730,7 @@ def main():
                     error_msg = f"Worker exception: {type(exc).__name__}: {exc}\n"
                     error_msg += ''.join(traceback.format_exception(type(exc), exc, exc.__traceback__))
                     print(error_msg)
-                    log.write(error_msg.encode())
+                    log.write(error_msg)
                     log.flush()
 
             isdone = True
