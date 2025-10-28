@@ -1,10 +1,11 @@
-from typing import Iterable
+from typing import Iterable, Optional
 import pathlib
 from typing import Any
 import angr
 from dataclasses import dataclass
 from angr.knowledge_plugins.functions import Function
-from angr.sim_type import SimType, SimTypeFunction
+from angr.sim_type import SimType, SimTypeFunction, SimTypePointer, SimTypeNum, SimTypeArray, SimStruct, SimTypeBottom
+from collections import OrderedDict
 from angr.sim_variable import SimVariable
 from cle.backends.elf.variable import VariableType
 from cle.backends.elf.variable_type import TypedefType, UnionType, PointerType, StructType, ArrayType, BaseType, StructMember
@@ -253,6 +254,7 @@ class TypeComparison:
     def __init__(self, base_lattice: nx.DiGraph) -> None:
         self.base_lattice = base_lattice
         self.max_dist = self.compute_max_dist()
+        self._vtype_to_simtype_memo: dict[int, Optional[SimType]] = {}
 
     def compute_max_dist(self):
         return nx.shortest_path_length(self.base_lattice, TypehoonTop(), TypehoonBot())
@@ -392,6 +394,93 @@ class TypeComparison:
             case (_, _):
                 print(f"returning max dist for: {t1} {t2}")
                 return self.max_dist
+
+    def variable_type_to_sim_type(self, vtype: VariableType) -> Optional[SimType]:
+        """
+        Convert a VariableType (from DWARF) to a SimType recursively.
+        
+        Uses pattern matching to handle different VariableType subclasses:
+        - BaseType -> SimTypeNum
+        - PointerType -> SimTypePointer  
+        - StructType -> SimStruct
+        - ArrayType -> SimTypeArray
+        - UnionType -> None (unions not supported by type inference)
+        - TypedefType -> recursively resolve the underlying type
+        - BottomGroundType -> None (no type information available)
+        
+        Uses memoization to ensure that the same VariableType object always maps to
+        the same SimType object, preserving object identity and avoiding redundant
+        conversions.
+        
+        :param vtype: The VariableType to convert
+        :return: Corresponding SimType, or None if the type cannot be converted
+        """
+        # Handle None case
+        if vtype is None:
+            return None
+        
+        # Check memoization - if we've already converted this type,
+        # return the existing SimType object
+        vtype_id = id(vtype)
+        if vtype_id in self._vtype_to_simtype_memo:
+            return self._vtype_to_simtype_memo[vtype_id]
+        
+        result: Optional[SimType] = None
+        
+        match vtype:
+            
+            case TypedefType(type=typedef_type) if typedef_type is not None:
+                # Resolve typedef to underlying type
+                result = self.variable_type_to_sim_type(typedef_type)
+            
+            case PointerType(referenced_type=ref_type) if ref_type is not None:
+                converted_ref = self.variable_type_to_sim_type(ref_type)
+                if converted_ref is not None:
+                    result = SimTypePointer(converted_ref)
+            
+            case PointerType(referenced_type=None):
+                # Void pointer
+                result = SimTypePointer(SimTypeBottom())
+            
+            case ArrayType(element_type=elem_type, byte_size=array_size) if elem_type is not None:
+                converted_elem = self.variable_type_to_sim_type(elem_type)
+                if converted_elem is not None:
+                    # Calculate length if we have byte_size information
+                    length = None
+                    if array_size is not None and elem_type.byte_size is not None and elem_type.byte_size > 0:
+                        length = array_size // elem_type.byte_size
+                    result = SimTypeArray(converted_elem, length=length)
+                        
+            case StructType(name=struct_name, members=struct_members):
+                # Register a placeholder early for self-referential structs
+                name = struct_name if struct_name != "unknown" else None
+                placeholder = SimStruct(OrderedDict(), name=name)
+                self._vtype_to_simtype_memo[vtype_id] = placeholder
+                
+                # Convert all members recursively using comprehension
+                converted_fields = [
+                    (member.name, self.variable_type_to_sim_type(member.type))
+                    for member in struct_members
+                    if member.name is not None and member.type is not None
+                ]
+                
+                # Check if any conversion failed
+                if all(converted_type is not None for _, converted_type in converted_fields):
+                    # All conversions succeeded - create final struct with fields
+                    result = SimStruct(OrderedDict(converted_fields), name=name)
+            
+            case BaseType(byte_size=size, name=type_name):
+                # Convert base type to SimTypeNum based on size and name
+                size_bits = size * 8 if size is not None else 32
+                signed = not (type_name and "unsigned" in type_name.lower())
+                result = SimTypeNum(size_bits, signed=signed)
+            
+            case _:
+                # Unknown type
+                print(f"Warning: Unknown VariableType: {type(vtype)} {vtype}")
+        
+        self._vtype_to_simtype_memo[vtype_id] = result
+        return result
 
 
 class Evaler:
@@ -547,21 +636,22 @@ def main():
                     sim_type = comp.recoverd_fty
                     c_type = sim_type.c_repr()
                     tc_type = translator.simtype2tc(comp.recoverd_fty)
+                    gt_type = comp.ground_truth_type
                     print(f"***********************************\n\n")
                     print(f"Raw recovered fty", comp.recoverd_fty, f"type={type(comp.recoverd_fty)}")
-                    print(f"Raw ground truth type", comp.ground_truth_type, f"type={type(comp.ground_truth_type)}")
+                    print(f"Raw ground truth type", gt_type, f"type={type(gt_type)}")
                     print(f"Recovered: {tc_type}: type = {(type(tc_type))}")
                     print(f"Recovered C: {c_type}: type = {(type(c_type))}")
                     print(f"Function name: {comp.func.name}")
                     print(f"\n\n***********************************")
-                    dist = comparer.type_distance(tc_type, comp.ground_truth_type, CompState(pset(), pset()))
+                    dist = comparer.type_distance(tc_type, gt_type, CompState(pset(), pset()))
                     d = asdict(ComparisonData(
                         bin_name, comp.func.addr, comp.func_size, dist, comp.ns_time_spent_during_inference))
                     d['funcname'] = comp.func.name
                     d['ctype'] = c_type
                     d['tctype'] = str(tc_type)
                     d['simtype'] = str(sim_type)
-                    d['gttype'] = str(comp.ground_truth_type)
+                    d['gttype'] = str(gt_type)
 
                     d['tc_predicted'] = {
                         'params': [str(p) for p in tc_type.params],
@@ -572,6 +662,15 @@ def main():
                     d['simtype_predicted_c'] = {
                         'args': [(str(arg), arg.c_repr()) for arg in sim_type.args],
                         'returnty': ret_t
+                    }
+
+                    def format_type(t):
+                        st = comparer.variable_type_to_sim_type(t)
+                        c_str = st.c_repr() if st is not None else "None"
+                        return (str(t), str(st), c_str)
+                    d['groundtruth_c'] = {
+                        'args': [format_type(a) for a in gt_type.args],
+                        'returnty': ('void', 'void', 'void') if gt_type.returnty is None else format_type(gt_type.returnty)
                     }
 
                     try:
