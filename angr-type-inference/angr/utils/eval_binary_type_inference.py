@@ -695,6 +695,10 @@ def main():
                         'returnty': ('void', 'void', 'void') if gt_type.returnty is None else format_type(gt_type.returnty)
                     }
 
+                    d['args_ok'] = all(arg[2] != "None" for arg in d['groundtruth_c']['args'])
+                    d['ret_ok'] = d['groundtruth_c']['returnty'][2] != "None"
+                    d['ok'] = d['args_ok'] and d['ret_ok']
+
                     try:
                         json.dump(d, totfl)
                         totfl.write('\n')
