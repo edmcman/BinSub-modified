@@ -5,7 +5,7 @@
 MOUNT_DIR = "mount"
 DATASETS = ["coreutils_O3", "coreutils_O0"]
 N_SAMPLES = 0
-NUM_PROC = 2
+NUM_PROC_PER_RUN = 2
 MICROBENCHMARKS = 1
 
 # Rule to run all evaluations
@@ -24,10 +24,10 @@ rule eval_typehoon:
     log:
         "{mount_dir}/{dataset}/typehoon.log"
     resources:
-        cpus = NUM_PROC
+        cpus = NUM_PROC_PER_RUN
     params:
         n = N_SAMPLES,
-        num_proc = NUM_PROC,
+        num_proc = NUM_PROC_PER_RUN,
         microbenchmarks = MICROBENCHMARKS
     shell:
         """
@@ -51,10 +51,10 @@ rule eval_algebraic_solver:
     log:
         "{mount_dir}/{dataset}/algebraic_solver.log"
     resources:
-        cpus = NUM_PROC
+        cpus = NUM_PROC_PER_RUN
     params:
         n = N_SAMPLES,
-        num_proc = NUM_PROC,
+        num_proc = NUM_PROC_PER_RUN,
         microbenchmarks = MICROBENCHMARKS
     shell:
         """
