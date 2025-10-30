@@ -20,7 +20,7 @@ rule eval_typehoon:
         dataset = "{mount_dir}/{dataset}"
     output:
         results = "{mount_dir}/{dataset}/typehoon.jsonl",
-        failure_log = "{mount_dir}/{dataset}/fail_typehoon"
+        failure_log = "{mount_dir}/{dataset}/typehoon.fail.log"
     log:
         "{mount_dir}/{dataset}/typehoon.log"
     resources:
@@ -47,7 +47,7 @@ rule eval_algebraic_solver:
         dataset = "{mount_dir}/{dataset}"
     output:
         results = "{mount_dir}/{dataset}/algebraic_solver.jsonl",
-        failure_log = "{mount_dir}/{dataset}/fail_algebraic_solver"
+        failure_log = "{mount_dir}/{dataset}/algebraic_solver.fail.log"
     log:
         "{mount_dir}/{dataset}/algebraic_solver.log"
     resources:
