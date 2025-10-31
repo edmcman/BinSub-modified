@@ -4,7 +4,7 @@
 # Configuration
 MOUNT_DIR = "mount"
 DATASETS = ["coreutils_O3", "coreutils_O0"]
-N_SAMPLES = 0
+N_SAMPLES = 0 # all
 NUM_PROC_PER_RUN = 2
 MICROBENCHMARKS = 1
 
@@ -31,14 +31,16 @@ rule eval_typehoon:
         microbenchmarks = MICROBENCHMARKS
     shell:
         """
-        docker run --rm -v $(pwd)/{wildcards.mount_dir}:/{wildcards.mount_dir} binsub \
-            -m angr.utils.eval_binary_type_inference \
+        docker run --rm -v $(pwd)/{wildcards.mount_dir}:/{wildcards.mount_dir} \
+            --entrypoint /bin/bash binsub -c \
+            "python3 -m angr.utils.eval_binary_type_inference \
             -n {params.n} \
             -num_proc {params.num_proc} \
             -failure_log /{output.failure_log} \
             /{input.dataset} \
             -o /{output.results} \
-            -microbenchmarks {params.microbenchmarks} > {log} 2>&1
+            -microbenchmarks {params.microbenchmarks} && \
+            chown -R $(id -u):$(id -g) /{wildcards.mount_dir}/{wildcards.dataset}" > {log} 2>&1
         """
 
 # Rule for algebraic solver evaluation
@@ -58,13 +60,15 @@ rule eval_algebraic_solver:
         microbenchmarks = MICROBENCHMARKS
     shell:
         """
-        docker run --rm -v $(pwd)/{wildcards.mount_dir}:/{wildcards.mount_dir} binsub \
-            -m angr.utils.eval_binary_type_inference \
+        docker run --rm -v $(pwd)/{wildcards.mount_dir}:/{wildcards.mount_dir} \
+            --entrypoint /bin/bash binsub -c \
+            "python3 -m angr.utils.eval_binary_type_inference \
             -algebraic_solver \
             -n {params.n} \
             -num_proc {params.num_proc} \
             -failure_log /{output.failure_log} \
             /{input.dataset} \
             -o /{output.results} \
-            -microbenchmarks {params.microbenchmarks} > {log} 2>&1
+            -microbenchmarks {params.microbenchmarks} && \
+            chown -R $(id -u):$(id -g) /{wildcards.mount_dir}/{wildcards.dataset}" > {log} 2>&1
         """
